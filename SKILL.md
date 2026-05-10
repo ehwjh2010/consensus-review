@@ -40,14 +40,14 @@ One user requirement maps to exactly one fresh consensus subagent and one new Cl
    - Relevant constraints and assumptions.
 5. Wait for the subagent to complete the Claude review, edits when requested, and Claude rereview loop.
 6. Report the subagent result to the user:
-   - Final approved plan, only for `input-kind=plan`.
+   - Complete `Final approved plan`, only for `input-kind=plan` with final status `APPROVED`.
    - Files modified.
    - Main changes made.
    - Number of Claude review rounds.
    - Final status.
    - Any `BLOCKED` reason or explicitly deferred notes.
 
-For `plan`, the main Codex agent must treat the subagent's `Final approved plan` as the authoritative plan after consensus. If the user asked Codex to proceed after consensus, execute or report only from that final approved plan, not from the initial plan. For `file`, the target files on disk are the authoritative final state, and the subagent result should summarize modified files, expanded files, deferred notes, verification, round count, and status rather than returning full file contents.
+For `plan`, when the subagent returns final status `APPROVED`, the main Codex agent must first replace its own intended next steps with the subagent's complete `Final approved plan` and treat that plan as the authoritative plan after consensus. The main Codex agent must show the user the complete `Final approved plan`, not just a summary and not the initial plan. If the user asked Codex to proceed after consensus, first show the complete final approved plan, then execute or report only from that final approved plan. For `file`, the target files on disk are the authoritative final state, and the subagent result should summarize modified files, expanded files, deferred notes, verification, round count, and status rather than returning full file contents unless the user explicitly requests them.
 
 The main Codex agent should not call Claude directly for the consensus loop. For `file`, it should not perform the requested file edits after the subagent returns because the subagent owns the review-modify-rereview loop and the workspace edits.
 
