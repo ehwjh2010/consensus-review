@@ -14,9 +14,6 @@ Consensus:
       --round <n>              Review round number (default: 1)
       --session <id>           Resume the Claude session for this same requirement
 
-File context (optional, repeatable):
-  -f, --file <path>            Priority file path. Relative paths resolve from --workspace
-
 Options:
   -w, --workspace <path>       Workspace directory (default: current directory)
       --model <name>           Claude model override
@@ -57,37 +54,6 @@ trim_whitespace() {
   printf '%s' "$value"
 }
 
-to_abs_if_exists() {
-  local target="$1"
-  if [[ -e "$target" ]]; then
-    local dir
-    dir="$(cd "$(dirname "$target")" && pwd)"
-    echo "$dir/$(basename "$target")"
-    return
-  fi
-  echo "$target"
-}
-
-resolve_file_ref() {
-  local workspace="$1" raw="$2" cleaned
-  cleaned="$(trim_whitespace "$raw")"
-  [[ -z "$cleaned" ]] && { echo ""; return; }
-  if [[ "$cleaned" =~ ^(.+)#L[0-9]+$ ]]; then cleaned="${BASH_REMATCH[1]}"; fi
-  if [[ "$cleaned" =~ ^(.+):[0-9]+(-[0-9]+)?$ ]]; then cleaned="${BASH_REMATCH[1]}"; fi
-  if [[ "$cleaned" != /* ]]; then cleaned="$workspace/$cleaned"; fi
-  to_abs_if_exists "$cleaned"
-}
-
-append_file_refs() {
-  local raw="$1" item
-  IFS=',' read -r -a items <<< "$raw"
-  for item in "${items[@]}"; do
-    local trimmed
-    trimmed="$(trim_whitespace "$item")"
-    [[ -n "$trimmed" ]] && file_refs+=("$trimmed")
-  done
-}
-
 workspace="${PWD}"
 task_text=""
 plan_text=""
@@ -97,7 +63,6 @@ effort="max"
 permission_mode="plan"
 output_path=""
 session_id=""
-file_refs=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -105,7 +70,6 @@ while [[ $# -gt 0 ]]; do
     -t|--task) task_text="$(take_value "$1" "${2:-}")"; shift 2 ;;
     -p|--plan) plan_text="$(take_value "$1" "${2:-}")"; shift 2 ;;
     --round) round="$(take_value "$1" "${2:-}")"; shift 2 ;;
-    -f|--file|--focus) append_file_refs "$(take_value "$1" "${2:-}")"; shift 2 ;;
     --session) session_id="$(take_value "$1" "${2:-}")"; shift 2 ;;
     --model) model="$(take_value "$1" "${2:-}")"; shift 2 ;;
     --effort|--reasoning) effort="$(take_value "$1" "${2:-}")"; shift 2 ;;
@@ -139,18 +103,6 @@ if [[ -z "$output_path" ]]; then
 fi
 mkdir -p "$(dirname "$output_path")"
 
-file_block=""
-if (( ${#file_refs[@]} > 0 )); then
-  file_block=$'\nRelevant file hints:'
-  for ref in "${file_refs[@]}"; do
-    resolved="$(resolve_file_ref "$workspace" "$ref")"
-    [[ -z "$resolved" ]] && continue
-    exists_tag="missing"
-    [[ -e "$resolved" ]] && exists_tag="exists"
-    file_block+=$'\n- '"${resolved} (${exists_tag})"
-  done
-fi
-
 prompt="$(cat <<PROMPT
 You are Claude reviewing a Codex implementation plan in read-only mode.
 
@@ -160,6 +112,8 @@ Review contract:
 - Return AGREE if the plan is executable and covers the important risks.
 - Return ISSUES if there are blocking problems, incorrect assumptions, missing context, or test gaps.
 - If returning ISSUES, list only material issues that should change the plan.
+- Independently explore the workspace to inspect the code, configuration, tests, and documentation needed for this requirement.
+- Choose the relevant paths yourself from the user request and current plan; no path hints will be provided.
 - Do not edit files. Do not propose unrelated improvements.
 
 Workspace:
@@ -175,10 +129,6 @@ Current Codex plan:
 $plan_text
 PROMPT
 )"
-
-if [[ -n "$file_block" ]]; then
-  prompt+=$'\n'"$file_block"
-fi
 
 cmd=(claude -p --verbose --output-format stream-json --effort "$effort")
 if [[ -n "$session_id" ]]; then

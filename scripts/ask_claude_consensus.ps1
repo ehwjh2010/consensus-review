@@ -5,8 +5,6 @@ param(
   [Alias("p")]
   [string]$Plan,
   [int]$Round = 1,
-  [Alias("f")]
-  [string[]]$File = @(),
   [string]$Session,
   [string]$Model,
   [string]$Effort = "max",
@@ -31,9 +29,6 @@ Required:
 Consensus:
   -Round <n>                   Review round number (default: 1)
   -Session <id>                Resume the Claude session for this same requirement
-
-File context (optional, repeatable):
-  -File, -f <path>             Priority file path. Relative paths resolve from -Workspace
 
 Options:
   -Workspace <path>            Workspace directory (default: current directory)
@@ -63,20 +58,6 @@ function Require-Command([string]$Name) {
 function Trim-Text([AllowNull()][string]$Value) {
   if ($null -eq $Value) { return "" }
   return $Value.Trim()
-}
-
-function Resolve-FileRef([string]$WorkspacePath, [string]$Raw) {
-  $cleaned = (Trim-Text $Raw)
-  if ([string]::IsNullOrWhiteSpace($cleaned)) { return "" }
-  $cleaned = $cleaned -replace '#L\d+$', ''
-  $cleaned = $cleaned -replace ':\d+(-\d+)?$', ''
-  if (-not [System.IO.Path]::IsPathRooted($cleaned)) {
-    $cleaned = Join-Path $WorkspacePath $cleaned
-  }
-  if (Test-Path -LiteralPath $cleaned) {
-    return (Resolve-Path -LiteralPath $cleaned).Path
-  }
-  return $cleaned
 }
 
 if ($Help) {
@@ -118,17 +99,6 @@ if (-not [string]::IsNullOrWhiteSpace($outputDir)) {
   New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 }
 
-$fileLines = New-Object System.Collections.Generic.List[string]
-foreach ($entry in $File) {
-  foreach ($item in ($entry -split ",")) {
-    $resolved = Resolve-FileRef $Workspace $item
-    if ([string]::IsNullOrWhiteSpace($resolved)) { continue }
-    $existsTag = "missing"
-    if (Test-Path -LiteralPath $resolved) { $existsTag = "exists" }
-    $fileLines.Add("- $resolved ($existsTag)")
-  }
-}
-
 $prompt = @"
 You are Claude reviewing a Codex implementation plan in read-only mode.
 
@@ -138,6 +108,8 @@ Review contract:
 - Return AGREE if the plan is executable and covers the important risks.
 - Return ISSUES if there are blocking problems, incorrect assumptions, missing context, or test gaps.
 - If returning ISSUES, list only material issues that should change the plan.
+- Independently explore the workspace to inspect the code, configuration, tests, and documentation needed for this requirement.
+- Choose the relevant paths yourself from the user request and current plan; no path hints will be provided.
 - Do not edit files. Do not propose unrelated improvements.
 
 Workspace:
@@ -152,11 +124,6 @@ $Task
 Current Codex plan:
 $Plan
 "@
-
-if ($fileLines.Count -gt 0) {
-  $prompt += "`nRelevant file hints:`n"
-  $prompt += ($fileLines -join "`n")
-}
 
 $claudeArgs = @("-p", "--verbose", "--output-format", "stream-json", "--effort", $Effort)
 if ([string]::IsNullOrWhiteSpace($Session)) {

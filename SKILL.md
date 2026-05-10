@@ -29,7 +29,7 @@ One user requirement maps to exactly one fresh consensus subagent and one new Cl
    - Original user request.
    - Initial Codex plan.
    - Workspace path.
-   - Relevant file hints or constraints.
+   - Relevant constraints.
    - Any known assumptions.
 4. Wait for the subagent to return the final plan that Claude agreed with, or the best revised plan plus unresolved disagreements if consensus was not reached.
 5. Present the returned plan to the user inside `<proposed_plan>...</proposed_plan>`.
@@ -54,7 +54,7 @@ Use `scripts/ask_claude_consensus.sh` on Unix-like systems or `scripts/ask_claud
 9. Stop after Claude returns `AGREE` or after 8 total rounds.
 10. If the 8-round limit is reached, return the best revised plan and list unresolved disagreements or risks.
 
-Claude is read-only in this workflow. Claude reviews plans, asks blocking questions, identifies incorrect assumptions, and calls out missing context or test gaps. Claude must not edit files.
+Claude is read-only in this workflow. Claude reviews plans, independently explores the workspace for the context required by the current requirement, asks blocking questions, identifies incorrect assumptions, and calls out missing context or test gaps. Claude must not edit files.
 
 ## Claude Review Contract
 
@@ -81,8 +81,7 @@ Claude should list only issues that materially affect whether the plan can be ex
   --workspace /path/to/workspace \
   --task "Original user request" \
   --plan "Current Codex plan" \
-  --round 1 \
-  --file src/example.ts
+  --round 1
 ```
 
 For follow-up rounds inside the same consensus subagent and same requirement:
