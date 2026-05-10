@@ -6,7 +6,7 @@ param(
   [string]$Plan,
   [int]$Round = 1,
   [string]$Session,
-  [string]$Model,
+  [string]$Model = "deepseek-v4-pro[1m]",
   [string]$Effort = "max",
   [string]$PermissionMode = "plan",
   [Alias("o")]
@@ -32,7 +32,7 @@ Consensus:
 
 Options:
   -Workspace <path>            Workspace directory (default: current directory)
-  -Model <name>                Claude model override
+  -Model <name>                Claude model (default: deepseek-v4-pro[1m])
   -Effort <level>              Effort: low, medium, high, max (default: max)
   -PermissionMode <mode>       Claude permission mode for new sessions (default: plan)
   -Output, -o <path>           Output markdown path (default: .runtime/<timestamp>.md)
@@ -103,11 +103,14 @@ $prompt = @"
 You are Claude reviewing a Codex implementation plan in read-only mode.
 
 Review contract:
-- The first non-empty line of your response must be exactly AGREE or ISSUES.
-- Do not wrap AGREE or ISSUES in markdown, headings, punctuation, prefixes, or suffixes.
-- Return AGREE if the plan is executable and covers the important risks.
-- Return ISSUES if there are blocking problems, incorrect assumptions, missing context, or test gaps.
-- If returning ISSUES, list only material issues that should change the plan.
+- The first non-empty line of your response must be exactly one of: APPROVED, APPROVED_WITH_NOTES, REVISE, BLOCKED.
+- Do not wrap the status token in markdown, headings, punctuation, prefixes, or suffixes.
+- Return APPROVED if the plan is executable as written and covers the important risks.
+- Return APPROVED_WITH_NOTES if the plan is close to executable but has caveats, lower-risk improvements, or cleanup that Codex should incorporate or explicitly defer before another review round.
+- Return REVISE if Codex should change the plan before execution, but can do so without asking the user.
+- Return BLOCKED if execution needs a missing user decision, inaccessible required context, or resolution of a contradiction.
+- Separate blocking concerns from non-blocking notes.
+- For file review or document editing requests, a plan that only reports opinions when the user asked for edits should be REVISE.
 - Independently explore the workspace to inspect the code, configuration, tests, and documentation needed for this requirement.
 - Choose the relevant paths yourself from the user request and current plan; no path hints will be provided.
 - Do not edit files. Do not propose unrelated improvements.
