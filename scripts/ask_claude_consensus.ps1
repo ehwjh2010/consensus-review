@@ -4,6 +4,11 @@ param(
   [string]$Task,
   [Alias("p")]
   [string]$Plan,
+  [ValidateSet("plan", "file")]
+  [string]$InputKind = "plan",
+  [string[]]$Target = @(),
+  [string]$Verification,
+  [string]$VerificationFile,
   [int]$Round = 1,
   [string]$Session,
   [string]$Model = "deepseek-v4-pro[1m]",
@@ -20,18 +25,22 @@ $ErrorActionPreference = "Stop"
 function Show-Usage {
   @"
 Usage:
-  ask_claude_consensus.ps1 -Task <text> -Plan <text> [options]
+  ask_claude_consensus.ps1 -InputKind <plan|file> [options]
 
-Required:
+First round required:
   -Task, -t <text>             Original user request or requirement
-  -Plan, -p <text>             Current Codex plan for Claude to review
+  -Plan, -p <text>             Initial Codex plan or file review instructions
 
 Consensus:
+  -InputKind <kind>            Internal input kind: plan or file (default: plan)
   -Round <n>                   Review round number (default: 1)
   -Session <id>                Resume the Claude session for this same requirement
 
 Options:
   -Workspace <path>            Workspace directory (default: current directory)
+  -Target <path>               Target file/path for file input (repeatable)
+  -Verification <text>         Optional verification commands/results
+  -VerificationFile <path>     Read optional verification commands/results from file
   -Model <name>                Claude model (default: deepseek-v4-pro[1m])
   -Effort <level>              Effort: low, medium, high, max (default: max)
   -PermissionMode <mode>       Claude permission mode for new sessions (default: plan)
@@ -75,14 +84,29 @@ $Workspace = (Resolve-Path -LiteralPath $Workspace).Path
 
 $Task = Trim-Text $Task
 $Plan = Trim-Text $Plan
-if ([string]::IsNullOrWhiteSpace($Task)) {
-  Fail "Missing required -Task."
-}
-if ([string]::IsNullOrWhiteSpace($Plan)) {
-  Fail "Missing required -Plan."
-}
 if ($Round -lt 1) {
   Fail "-Round must be a positive integer."
+}
+if (($InputKind -eq "file") -and ($Target.Count -eq 0)) {
+  Fail "-Target is required for -InputKind file."
+}
+if ([string]::IsNullOrWhiteSpace($Session)) {
+  if ([string]::IsNullOrWhiteSpace($Task)) {
+    Fail "Missing required -Task."
+  }
+  if ([string]::IsNullOrWhiteSpace($Plan)) {
+    Fail "Missing required -Plan."
+  }
+} elseif ($InputKind -eq "plan") {
+  if ([string]::IsNullOrWhiteSpace($Plan)) {
+    Fail "Missing required -Plan for resumed plan review."
+  }
+}
+if (-not [string]::IsNullOrWhiteSpace($VerificationFile)) {
+  if (-not (Test-Path -LiteralPath $VerificationFile -PathType Leaf)) {
+    Fail "Verification file does not exist: $VerificationFile"
+  }
+  $Verification = Get-Content -LiteralPath $VerificationFile -Raw
 }
 
 Require-Command "claude"
@@ -99,21 +123,76 @@ if (-not [string]::IsNullOrWhiteSpace($outputDir)) {
   New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 }
 
-$prompt = @"
-You are Claude reviewing a Codex implementation plan in read-only mode.
+function Resolve-TargetPath([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path)) {
+    Fail "Target path does not exist: $Path"
+  }
+  return (Resolve-Path -LiteralPath $Path).Path
+}
 
+$targetSection = "(none)"
+if ($Target.Count -gt 0) {
+  $targetSection = ($Target | ForEach-Object { "- $(Resolve-TargetPath $_)" }) -join "`n"
+}
+
+$statusContract = @"
 Review contract:
 - The first non-empty line of your response must be exactly one of: APPROVED, APPROVED_WITH_NOTES, REVISE, BLOCKED.
 - Do not wrap the status token in markdown, headings, punctuation, prefixes, or suffixes.
-- Return APPROVED if the plan is executable as written and covers the important risks.
-- Return APPROVED_WITH_NOTES if the plan is close to executable but has caveats, lower-risk improvements, or cleanup that Codex should incorporate or explicitly defer before another review round.
-- Return REVISE if Codex should change the plan before execution, but can do so without asking the user.
+- Return APPROVED if the submitted plan is a complete acceptable plan, or the target file content is acceptable as written, and the important risks are covered.
+- Return APPROVED_WITH_NOTES if the work is close but has caveats, lower-risk improvements, or cleanup that the Codex subagent should incorporate into the plan or target files when appropriate, or explicitly defer before another review round. For plan input, the subagent will send the complete updated plan in the next round.
+- Return REVISE if the Codex subagent should change the plan or target files, but can do so without asking the user. For plan input, the subagent will send the complete updated plan in the next round.
 - Return BLOCKED if execution needs a missing user decision, inaccessible required context, or resolution of a contradiction.
 - Separate blocking concerns from non-blocking notes.
-- For file review or document editing requests, a plan that only reports opinions when the user asked for edits should be REVISE.
-- Independently explore the workspace to inspect the code, configuration, tests, and documentation needed for this requirement.
-- Choose the relevant paths yourself from the user request and current plan; no path hints will be provided.
+- Make REVISE and APPROVED_WITH_NOTES feedback concrete enough for a Codex subagent to turn into edits, deferrals, or verification steps.
 - Do not edit files. Do not propose unrelated improvements.
+"@
+
+$verificationSection = ""
+if (-not [string]::IsNullOrWhiteSpace($Verification)) {
+  $verificationSection = @"
+
+Verification:
+$Verification
+"@
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Session) -and $InputKind -eq "plan") {
+  $prompt = @"
+You are Claude reviewing Codex work in read-only mode.
+
+$statusContract
+
+Consensus round:
+$Round
+
+Updated plan:
+$Plan
+"@
+} elseif (-not [string]::IsNullOrWhiteSpace($Session) -and $InputKind -eq "file") {
+  $prompt = @"
+You are Claude reviewing Codex work in read-only mode.
+
+$statusContract
+
+Consensus round:
+$Round
+
+Target files/paths:
+$targetSection
+
+The target files have changed. Based on the current file contents and the prior session context, review them again.
+"@
+} else {
+  $prompt = @"
+You are Claude reviewing Codex work in read-only mode.
+
+$statusContract
+- Use the resumed session context from prior rounds when it already contains the needed code, configuration, tests, and documentation.
+- On round 1, build enough workspace context to review reliably.
+- For plan input, review the current Codex plan.
+- For file input, the target files/paths are the source of truth; inspect them as needed and identify the affected location, problem, and expected result when requesting changes.
+- Choose any additional relevant paths yourself from the user request, input kind, targets, and current plan.
 
 Workspace:
 $Workspace
@@ -121,12 +200,19 @@ $Workspace
 Consensus round:
 $Round
 
+Input kind:
+$InputKind
+
+Target files/paths:
+$targetSection
+
 Original user request:
 $Task
 
-Current Codex plan:
-$Plan
+Initial Codex plan or file review instructions:
+$Plan$verificationSection
 "@
+}
 
 $claudeArgs = @("-p", "--verbose", "--output-format", "stream-json", "--effort", $Effort)
 if ([string]::IsNullOrWhiteSpace($Session)) {

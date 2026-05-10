@@ -4,18 +4,23 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  ask_claude_consensus.sh --task <text> --plan <text> [options]
+  ask_claude_consensus.sh --input-kind <plan|file> [options]
 
-Required:
+First round required:
   -t, --task <text>            Original user request or requirement
-  -p, --plan <text>            Current Codex plan for Claude to review
+  -p, --plan <text>            Initial Codex plan or file review instructions
 
 Consensus:
+      --input-kind <kind>      Internal input kind: plan or file (default: plan)
       --round <n>              Review round number (default: 1)
       --session <id>           Resume the Claude session for this same requirement
 
 Options:
   -w, --workspace <path>       Workspace directory (default: current directory)
+      --target <path>          Target file/path for file input (repeatable)
+      --verification <text>    Optional verification commands/results
+      --verification-file <path>
+                               Read optional verification commands/results from file
       --model <name>           Claude model (default: deepseek-v4-pro[1m])
       --effort <level>         Effort: low, medium, high, max (default: max)
       --permission-mode <mode> Claude permission mode for new sessions (default: plan)
@@ -54,9 +59,18 @@ trim_whitespace() {
   printf '%s' "$value"
 }
 
+read_text_file() {
+  local option="$1" path="$2"
+  [[ -f "$path" ]] || fail "$option file does not exist: $path"
+  < "$path"
+}
+
 workspace="${PWD}"
 task_text=""
 plan_text=""
+input_kind="plan"
+target_paths=()
+verification_text=""
 round="1"
 model="deepseek-v4-pro[1m]"
 effort="max"
@@ -69,6 +83,10 @@ while [[ $# -gt 0 ]]; do
     -w|--workspace) workspace="$(take_value "$1" "${2:-}")"; shift 2 ;;
     -t|--task) task_text="$(take_value "$1" "${2:-}")"; shift 2 ;;
     -p|--plan) plan_text="$(take_value "$1" "${2:-}")"; shift 2 ;;
+    --input-kind) input_kind="$(take_value "$1" "${2:-}")"; shift 2 ;;
+    --target) target_paths+=("$(take_value "$1" "${2:-}")"); shift 2 ;;
+    --verification) verification_text="$(take_value "$1" "${2:-}")"; shift 2 ;;
+    --verification-file) verification_text="$(read_text_file "$1" "$(take_value "$1" "${2:-}")")"; shift 2 ;;
     --round) round="$(take_value "$1" "${2:-}")"; shift 2 ;;
     --session) session_id="$(take_value "$1" "${2:-}")"; shift 2 ;;
     --model) model="$(take_value "$1" "${2:-}")"; shift 2 ;;
@@ -87,9 +105,22 @@ workspace="$(cd "$workspace" && pwd)"
 
 task_text="$(trim_whitespace "$task_text")"
 plan_text="$(trim_whitespace "$plan_text")"
+input_kind="$(trim_whitespace "$input_kind")"
 round="$(trim_whitespace "$round")"
-[[ -n "$task_text" ]] || fail "Missing required --task."
-[[ -n "$plan_text" ]] || fail "Missing required --plan."
+
+case "$input_kind" in
+  plan|file) ;;
+  *) fail "--input-kind must be one of: plan, file." ;;
+esac
+if [[ "$input_kind" == "file" && "${#target_paths[@]}" -eq 0 ]]; then
+  fail "--target is required for --input-kind file."
+fi
+if [[ -z "$session_id" ]]; then
+  [[ -n "$task_text" ]] || fail "Missing required --task."
+  [[ -n "$plan_text" ]] || fail "Missing required --plan."
+elif [[ "$input_kind" == "plan" ]]; then
+  [[ -n "$plan_text" ]] || fail "Missing required --plan for resumed plan review."
+fi
 [[ "$round" =~ ^[0-9]+$ ]] || fail "--round must be a positive integer."
 (( round >= 1 )) || fail "--round must be a positive integer."
 
@@ -103,21 +134,89 @@ if [[ -z "$output_path" ]]; then
 fi
 mkdir -p "$(dirname "$output_path")"
 
-prompt="$(cat <<PROMPT
-You are Claude reviewing a Codex implementation plan in read-only mode.
+resolve_target() {
+  local path="$1" dir base
+  [[ -e "$path" ]] || fail "Target path does not exist: $path"
+  if [[ -d "$path" ]]; then
+    (cd "$path" && pwd)
+  else
+    dir="$(dirname "$path")"
+    base="$(basename "$path")"
+    printf '%s/%s\n' "$(cd "$dir" && pwd)" "$base"
+  fi
+}
 
+target_section="(none)"
+if [[ "${#target_paths[@]}" -gt 0 ]]; then
+  target_section=""
+  for target_path in "${target_paths[@]}"; do
+    target_section+="- $(resolve_target "$target_path")"$'\n'
+  done
+  target_section="${target_section%$'\n'}"
+fi
+
+status_contract="$(cat <<'CONTRACT'
 Review contract:
 - The first non-empty line of your response must be exactly one of: APPROVED, APPROVED_WITH_NOTES, REVISE, BLOCKED.
 - Do not wrap the status token in markdown, headings, punctuation, prefixes, or suffixes.
-- Return APPROVED if the plan is executable as written and covers the important risks.
-- Return APPROVED_WITH_NOTES if the plan is close to executable but has caveats, lower-risk improvements, or cleanup that Codex should incorporate or explicitly defer before another review round.
-- Return REVISE if Codex should change the plan before execution, but can do so without asking the user.
+- Return APPROVED if the submitted plan is a complete acceptable plan, or the target file content is acceptable as written, and the important risks are covered.
+- Return APPROVED_WITH_NOTES if the work is close but has caveats, lower-risk improvements, or cleanup that the Codex subagent should incorporate into the plan or target files when appropriate, or explicitly defer before another review round. For plan input, the subagent will send the complete updated plan in the next round.
+- Return REVISE if the Codex subagent should change the plan or target files, but can do so without asking the user. For plan input, the subagent will send the complete updated plan in the next round.
 - Return BLOCKED if execution needs a missing user decision, inaccessible required context, or resolution of a contradiction.
 - Separate blocking concerns from non-blocking notes.
-- For file review or document editing requests, a plan that only reports opinions when the user asked for edits should be REVISE.
-- Independently explore the workspace to inspect the code, configuration, tests, and documentation needed for this requirement.
-- Choose the relevant paths yourself from the user request and current plan; no path hints will be provided.
+- Make REVISE and APPROVED_WITH_NOTES feedback concrete enough for a Codex subagent to turn into edits, deferrals, or verification steps.
 - Do not edit files. Do not propose unrelated improvements.
+CONTRACT
+)"
+
+verification_section=""
+if [[ -n "$verification_text" ]]; then
+  verification_section="$(cat <<VERIFY
+
+Verification:
+$verification_text
+VERIFY
+)"
+fi
+
+if [[ -n "$session_id" && "$input_kind" == "plan" ]]; then
+  prompt="$(cat <<PROMPT
+You are Claude reviewing Codex work in read-only mode.
+
+$status_contract
+
+Consensus round:
+$round
+
+Updated plan:
+$plan_text
+PROMPT
+)"
+elif [[ -n "$session_id" && "$input_kind" == "file" ]]; then
+  prompt="$(cat <<PROMPT
+You are Claude reviewing Codex work in read-only mode.
+
+$status_contract
+
+Consensus round:
+$round
+
+Target files/paths:
+$target_section
+
+The target files have changed. Based on the current file contents and the prior session context, review them again.
+PROMPT
+)"
+else
+  prompt="$(cat <<PROMPT
+You are Claude reviewing Codex work in read-only mode.
+
+$status_contract
+- Use the resumed session context from prior rounds when it already contains the needed code, configuration, tests, and documentation.
+- On round 1, build enough workspace context to review reliably.
+- For plan input, review the current Codex plan.
+- For file input, the target files/paths are the source of truth; inspect them as needed and identify the affected location, problem, and expected result when requesting changes.
+- Choose any additional relevant paths yourself from the user request, input kind, targets, and current plan.
 
 Workspace:
 $workspace
@@ -125,13 +224,20 @@ $workspace
 Consensus round:
 $round
 
+Input kind:
+$input_kind
+
+Target files/paths:
+$target_section
+
 Original user request:
 $task_text
 
-Current Codex plan:
-$plan_text
+Initial Codex plan or file review instructions:
+$plan_text$verification_section
 PROMPT
 )"
+fi
 
 cmd=(claude -p --verbose --output-format stream-json --effort "$effort")
 if [[ -n "$session_id" ]]; then
