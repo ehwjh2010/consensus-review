@@ -9,7 +9,7 @@ param(
   [string[]]$File = @(),
   [string]$Session,
   [string]$Model,
-  [string]$Effort = "medium",
+  [string]$Effort = "max",
   [string]$PermissionMode = "plan",
   [Alias("o")]
   [string]$Output,
@@ -38,7 +38,7 @@ File context (optional, repeatable):
 Options:
   -Workspace <path>            Workspace directory (default: current directory)
   -Model <name>                Claude model override
-  -Effort <level>              Effort: low, medium, high, max (default: medium)
+  -Effort <level>              Effort: low, medium, high, max (default: max)
   -PermissionMode <mode>       Claude permission mode for new sessions (default: plan)
   -Output, -o <path>           Output markdown path (default: .runtime/<timestamp>.md)
   -Help                        Show this help

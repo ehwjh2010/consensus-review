@@ -20,7 +20,7 @@ File context (optional, repeatable):
 Options:
   -w, --workspace <path>       Workspace directory (default: current directory)
       --model <name>           Claude model override
-      --effort <level>         Effort: low, medium, high, max (default: medium)
+      --effort <level>         Effort: low, medium, high, max (default: max)
       --permission-mode <mode> Claude permission mode for new sessions (default: plan)
   -o, --output <path>          Output markdown path (default: .runtime/<timestamp>.md)
   -h, --help                   Show this help
@@ -93,7 +93,7 @@ task_text=""
 plan_text=""
 round="1"
 model=""
-effort="medium"
+effort="max"
 permission_mode="plan"
 output_path=""
 session_id=""
