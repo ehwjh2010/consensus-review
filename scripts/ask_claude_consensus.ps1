@@ -11,7 +11,7 @@ param(
   [string]$VerificationFile,
   [int]$Round = 1,
   [string]$Session,
-  [string]$Model = "deepseek-v4-pro[1m]",
+  [string]$Model = "",
   [string]$Effort = "max",
   [string]$PermissionMode = "plan",
   [Alias("o")]
@@ -41,7 +41,7 @@ Options:
   -Target <path>               Target file/path for file input (repeatable)
   -Verification <text>         Optional verification commands/results
   -VerificationFile <path>     Read optional verification commands/results from file
-  -Model <name>                Claude model (default: deepseek-v4-pro[1m])
+  -Model <name>                Claude model (default: use Claude CLI default)
   -Effort <level>              Effort: low, medium, high, max (default: max)
   -PermissionMode <mode>       Claude permission mode for new sessions (default: plan)
   -Output, -o <path>           Output markdown path (default: .runtime/<timestamp>.md)

@@ -21,7 +21,7 @@ Options:
       --verification <text>    Optional verification commands/results
       --verification-file <path>
                                Read optional verification commands/results from file
-      --model <name>           Claude model (default: deepseek-v4-pro[1m])
+      --model <name>           Claude model (default: use Claude CLI default)
       --effort <level>         Effort: low, medium, high, max (default: max)
       --permission-mode <mode> Claude permission mode for new sessions (default: plan)
   -o, --output <path>          Output markdown path (default: .runtime/<timestamp>.md)
@@ -72,7 +72,7 @@ input_kind="plan"
 target_paths=()
 verification_text=""
 round="1"
-model="deepseek-v4-pro[1m]"
+model=""
 effort="max"
 permission_mode="plan"
 output_path=""

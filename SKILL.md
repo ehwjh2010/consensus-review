@@ -139,7 +139,7 @@ Claude should separate blocking concerns from non-blocking notes. `REVISE` and `
   --round 1
 ```
 
-By default, the scripts run Claude with `--model 'deepseek-v4-pro[1m]'`. Override it with `--model <name>` on Unix-like systems or `-Model <name>` in PowerShell.
+By default, the scripts do not pass `--model`, so Claude uses the Claude CLI default. Override it with `--model <name>` on Unix-like systems or `-Model <name>` in PowerShell.
 
 For follow-up plan rounds inside the same consensus subagent and same requirement:
 
