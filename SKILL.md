@@ -51,6 +51,14 @@ For `plan`, when the subagent returns final status `APPROVED`, the main Codex ag
 
 The main Codex agent should not call Claude directly for the consensus loop. For `file`, it should not perform the requested file edits after the subagent returns because the subagent owns the review-modify-rereview loop and the workspace edits.
 
+## External Review Instructions
+
+Other skills may pass stage-specific review instructions to this skill, such as read-only references, the only writable target, and the risks Claude should check. Treat those instructions as request context for the current consensus run.
+
+This skill still owns the consensus protocol: isolated Claude session, status handling, review / revise / rereview loop, and final reporting. Claude remains read-only. Any file changes are performed by the consensus subagent according to Claude's feedback and the writable-target constraints in the request.
+
+If external review instructions conflict with this skill's isolation, status, or Claude-read-only rules, this skill's rules take precedence.
+
 ## Consensus Subagent Workflow
 
 Use `scripts/ask_claude_consensus.sh` on Unix-like systems or `scripts/ask_claude_consensus.ps1` on PowerShell hosts.
