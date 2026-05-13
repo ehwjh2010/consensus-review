@@ -106,33 +106,44 @@ Verification text is optional supporting context. Use `--verification` or `--ver
 
 Ask Claude to answer with one of these first-line status tokens. The first non-empty line must be exactly one token, with no markdown formatting, heading marker, prefix, or suffix:
 
+Default review priorities:
+
+1. Architecture design correctness and architecture option selection.
+2. Execution reliability and verification sufficiency.
+
+Claude should first judge whether the submitted plan or target file content fits the existing system architecture, module responsibilities, abstraction style, and long-term maintenance direction. This architecture review must check for clear boundaries, reasonable data flow, unnecessary coupling, premature abstraction, duplicate abstraction, public interface pollution, compatibility risk, test isolation risk, and maintainability or extensibility risk.
+
+Claude should also actively check whether there is a simpler, more consistent, or more maintainable architecture that still serves the current user request and remains inside the current task scope. If a clearly better architecture exists and its benefit is enough to justify the change cost, Claude should require the plan or file changes to adopt it instead of approving a merely executable approach.
+
+Only after the architecture direction is acceptable should Claude review execution steps, implementation detail, validation coverage, and rollout risk. Claude must not propose broad refactors unrelated to the current task. Architecture feedback must be concrete enough for the consensus subagent to convert into the current plan or target file changes.
+
 ```text
 APPROVED
 <brief rationale, optional>
 ```
 
-Use `APPROVED` when the submitted plan is a complete acceptable plan, or the target file content is acceptable as written, and the important risks are covered.
+Use `APPROVED` only when the submitted plan or target file content has a sound architecture direction, no clearly better in-scope architecture alternative should be adopted, and the important execution and verification risks are covered.
 
 ```text
 APPROVED_WITH_NOTES
 - <note, caveat, or optional improvement that should be incorporated or explicitly deferred>
 ```
 
-Use `APPROVED_WITH_NOTES` when the work is close, but Claude found caveats, lower-risk improvements, or cleanup that the consensus subagent should incorporate into the plan or target files when appropriate, or explicitly defer before another review round. This is not a final approval state. For `plan`, the subagent sends the complete updated plan in the next round.
+Use `APPROVED_WITH_NOTES` only for low-risk architecture caveats, architecture improvements that can be explicitly deferred, or execution-level cleanup that the consensus subagent should incorporate into the plan or target files when appropriate, or explicitly defer before another review round. This is not a final approval state. For `plan`, the subagent sends the complete updated plan in the next round.
 
 ```text
 REVISE
 - <required plan change, incorrect assumption, missing inspection, target file issue, or verification gap>
 ```
 
-Use `REVISE` when the consensus subagent can fix the plan or target files without asking the user, then send another review round. For `plan`, the subagent sends the complete updated plan in the next round.
+Use `REVISE` when there is an architecture design problem, a clearly better in-scope architecture alternative that should be adopted, or an execution/verification issue that the consensus subagent can fix without asking the user. Architecture issues take priority even when the current execution steps are complete. For `plan`, the subagent sends the complete updated plan in the next round.
 
 ```text
 BLOCKED
 - <missing user decision, inaccessible required context, or contradiction that prevents reliable execution>
 ```
 
-Use `BLOCKED` when the task should not proceed until the main Codex agent asks the user or obtains unavailable context.
+Use `BLOCKED` when architecture judgment or reliable execution needs a missing user decision, inaccessible required context, or resolution of a contradiction.
 
 Claude should separate blocking concerns from non-blocking notes. `REVISE` and `APPROVED_WITH_NOTES` feedback should be concrete enough for the consensus subagent to turn into edits, deferrals, or verification steps. For file or document editing requests, Claude should identify the affected location, problem, and expected result, and a response that only reports opinions when the user asked for edits should be `REVISE`. Claude must not edit files.
 

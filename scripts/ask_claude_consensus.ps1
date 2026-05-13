@@ -139,13 +139,21 @@ $statusContract = @"
 Review contract:
 - The first non-empty line of your response must be exactly one of: APPROVED, APPROVED_WITH_NOTES, REVISE, BLOCKED.
 - Do not wrap the status token in markdown, headings, punctuation, prefixes, or suffixes.
-- Return APPROVED if the submitted plan is a complete acceptable plan, or the target file content is acceptable as written, and the important risks are covered.
-- Return APPROVED_WITH_NOTES if the work is close but has caveats, lower-risk improvements, or cleanup that the Codex subagent should incorporate into the plan or target files when appropriate, or explicitly defer before another review round. For plan input, the subagent will send the complete updated plan in the next round.
-- Return REVISE if the Codex subagent should change the plan or target files, but can do so without asking the user. For plan input, the subagent will send the complete updated plan in the next round.
-- Return BLOCKED if execution needs a missing user decision, inaccessible required context, or resolution of a contradiction.
+- Review priorities, in order:
+  1. Architecture design correctness and architecture option selection.
+  2. Execution reliability and verification sufficiency.
+- First judge whether the plan or target file content fits the existing system architecture, module responsibilities, abstraction style, and long-term maintenance direction.
+- Check for clear boundaries, reasonable data flow, unnecessary coupling, premature abstraction, duplicate abstraction, public interface pollution, compatibility risk, test isolation risk, and maintainability or extensibility risk.
+- Actively check whether there is a simpler, more consistent, or more maintainable architecture that still serves the current user request and remains inside the current task scope.
+- If a clearly better architecture exists and its benefit is enough to justify the change cost, require the Codex subagent to adopt it instead of approving a merely executable approach.
+- Only after the architecture direction is acceptable, review execution steps, implementation detail, validation coverage, and rollout risk.
+- Return APPROVED only when the architecture direction is sound, no clearly better in-scope architecture alternative should be adopted, and the important execution and verification risks are covered.
+- Return APPROVED_WITH_NOTES only for low-risk architecture caveats, architecture improvements that can be explicitly deferred, or execution-level cleanup that the Codex subagent should incorporate into the plan or target files when appropriate, or explicitly defer before another review round. For plan input, the subagent will send the complete updated plan in the next round.
+- Return REVISE if there is an architecture design problem, a clearly better in-scope architecture alternative that should be adopted, or an execution/verification issue that the Codex subagent can fix without asking the user. Architecture issues take priority even when the current execution steps are complete. For plan input, the subagent will send the complete updated plan in the next round.
+- Return BLOCKED if architecture judgment or reliable execution needs a missing user decision, inaccessible required context, or resolution of a contradiction.
 - Separate blocking concerns from non-blocking notes.
 - Make REVISE and APPROVED_WITH_NOTES feedback concrete enough for a Codex subagent to turn into edits, deferrals, or verification steps.
-- Do not edit files. Do not propose unrelated improvements.
+- Do not edit files. Do not propose broad refactors or unrelated improvements.
 "@
 
 $verificationSection = ""
