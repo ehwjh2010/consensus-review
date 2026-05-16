@@ -55,7 +55,7 @@ The main Codex agent should not call Claude directly for the consensus loop. For
 
 Other skills may pass stage-specific review instructions to this skill, such as read-only references, the only writable target, and the risks Claude should check. Treat those instructions as request context for the current consensus run.
 
-This skill still owns the consensus protocol: isolated Claude session, status handling, review / revise / rereview loop, and final reporting. Claude remains read-only. Any file changes are performed by the consensus subagent according to Claude's feedback and the writable-target constraints in the request.
+This skill still owns the consensus protocol: isolated Claude session, status handling, review / revise / rereview loop, and final reporting. Claude remains read-only through explicit Claude CLI tool restrictions: the wrapper allows only `Read`, `Grep`, `Glob`, and `LS`. Any file changes are performed by the consensus subagent according to Claude's feedback and the writable-target constraints in the request.
 
 If external review instructions conflict with this skill's isolation, status, or Claude-read-only rules, this skill's rules take precedence.
 
@@ -87,7 +87,9 @@ For resumed `plan` rounds, pass the complete updated plan in `--plan`. Do not re
 
 For resumed `file` rounds, pass the current targets again. Do not repeat the original task, restate what Claude is reviewing, or summarize file edits. Claude uses the same session context plus the current target file contents.
 
-Claude is read-only in this workflow. Claude reviews plans or target file contents, builds the necessary workspace context in the first round, reuses that context in later rounds via the resumed session, and reads additional files only when the revised work introduces new scope, the prior context is missing, or the information may have changed. Claude asks blocking questions, identifies incorrect assumptions, requests specific changes, and calls out missing context or test gaps. Claude must not edit files.
+Claude is read-only in this workflow. The wrappers enforce this by passing `--tools "Read,Grep,Glob,LS"` on both new and resumed Claude invocations, so Claude can inspect context but cannot use mutation tools. Claude reviews plans or target file contents, builds the necessary workspace context in the first round, reuses that context in later rounds via the resumed session, and reads additional files only when the revised work introduces new scope, the prior context is missing, or the information may have changed. Claude asks blocking questions, identifies incorrect assumptions, requests specific changes, and calls out missing context or test gaps. Claude must not edit files.
+
+The scripts default new Claude sessions to native `--permission-mode auto`, not `plan`. Native Claude Code plan mode is avoided by default because `ExitPlanMode` is an approval workflow and can interrupt or abort non-interactive consensus runs. The explicit `--permission-mode <mode>` / `-PermissionMode <mode>` override remains available only for new sessions; resumed sessions use `--resume` plus the same read-only tool restrictions.
 
 The consensus subagent may edit workspace files. It should default to editing only the user-specified or inferred target files. If Claude explicitly identifies related files that must change to complete the task correctly, the subagent may expand the write set to those related files. The subagent must list every expanded file in its final result. It must not modify unrelated files.
 

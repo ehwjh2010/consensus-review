@@ -13,7 +13,7 @@ param(
   [string]$Session,
   [string]$Model = "",
   [string]$Effort = "max",
-  [string]$PermissionMode = "plan",
+  [string]$PermissionMode = "auto",
   [Alias("o")]
   [string]$Output,
   [switch]$Help
@@ -43,7 +43,8 @@ Options:
   -VerificationFile <path>     Read optional verification commands/results from file
   -Model <name>                Claude model (default: use Claude CLI default)
   -Effort <level>              Effort: low, medium, high, max (default: max)
-  -PermissionMode <mode>       Claude permission mode for new sessions (default: plan)
+  -PermissionMode <mode>       Claude permission mode for new sessions (default: auto);
+                               Claude mutation tools are disabled
   -Output, -o <path>           Output markdown path (default: .runtime/<timestamp>.md)
   -Help                        Show this help
 
@@ -247,7 +248,7 @@ $Plan$verificationSection
 "@
 }
 
-$claudeArgs = @("-p", "--verbose", "--output-format", "stream-json", "--effort", $Effort)
+$claudeArgs = @("-p", "--verbose", "--output-format", "stream-json", "--effort", $Effort, "--tools", "Read,Grep,Glob,LS")
 if ([string]::IsNullOrWhiteSpace($Session)) {
   $claudeArgs += @("--permission-mode", $PermissionMode)
 } else {

@@ -23,7 +23,8 @@ Options:
                                Read optional verification commands/results from file
       --model <name>           Claude model (default: use Claude CLI default)
       --effort <level>         Effort: low, medium, high, max (default: max)
-      --permission-mode <mode> Claude permission mode for new sessions (default: plan)
+      --permission-mode <mode> Claude permission mode for new sessions (default: auto);
+                               Claude mutation tools are disabled
   -o, --output <path>          Output markdown path (default: .runtime/<timestamp>.md)
   -h, --help                   Show this help
 
@@ -74,7 +75,7 @@ verification_text=""
 round="1"
 model=""
 effort="max"
-permission_mode="plan"
+permission_mode="auto"
 output_path=""
 session_id=""
 
@@ -272,7 +273,7 @@ PROMPT
 )"
 fi
 
-cmd=(claude -p --verbose --output-format stream-json --effort "$effort")
+cmd=(claude -p --verbose --output-format stream-json --effort "$effort" --tools "Read,Grep,Glob,LS")
 if [[ -n "$session_id" ]]; then
   cmd+=(--resume "$session_id")
 else
