@@ -51,13 +51,13 @@ For `plan`, when the subagent returns final status `APPROVED`, the main Codex ag
 
 The main Codex agent should not call Claude directly for the consensus loop. For `file`, it should not perform the requested file edits after the subagent returns because the subagent owns the review-modify-rereview loop and the workspace edits.
 
-## External Review Instructions
+## Caller Constraints
 
-Other skills may pass stage-specific review instructions to this skill, such as read-only references, the only writable target, and the risks Claude should check. Treat those instructions as request context for the current consensus run.
+The caller may pass request-specific constraints to this skill, such as read-only references, writable targets, review focus areas, files that must not be changed, or stage-specific risks. Treat these constraints as part of the current consensus run.
 
-This skill still owns the consensus protocol: isolated Claude session, status handling, review / revise / rereview loop, and final reporting. Claude remains read-only through explicit Claude CLI tool restrictions: the wrapper allows only `Read`, `Grep`, `Glob`, and `LS`. Any file changes are performed by the consensus subagent according to Claude's feedback and the writable-target constraints in the request.
+This skill still owns the consensus protocol: isolated Claude session, status handling, review / revise / rereview loop, and final reporting. Claude remains read-only through explicit Claude CLI tool restrictions: the wrapper allows only `Read`, `Grep`, `Glob`, and `LS`. Any file changes are performed by the consensus subagent according to Claude's feedback and the caller-provided writable-target constraints.
 
-If external review instructions conflict with this skill's isolation, status, or Claude-read-only rules, this skill's rules take precedence.
+If caller constraints conflict with this skill's isolation, status, Claude-read-only, or final-reporting rules, this skill's rules take precedence.
 
 ## Consensus Subagent Workflow
 
